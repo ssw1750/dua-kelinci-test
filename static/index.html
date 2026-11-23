@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dua Kelinci — Sales Intelligence &amp; Telegram Digest</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="container topbar-inner">
+      <div class="brand-lockup">
+        <div class="logo-badge">DK</div>
+        <div>
+          <h1>Dua Kelinci Sales Intelligence</h1>
+          <p class="subtitle">Monitoring Penjualan Region, Brand, Outlet Terlemah &amp; Telegram Digest</p>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <button id="btn-audit" class="btn btn-ghost" type="button">
+          <span class="dot-warn"></span> Audit Data (<span id="audit-badge-count">-</span>)
+        </button>
+        <label class="btn btn-ghost upload-label">
+          Upload CSV
+          <input id="csv-upload" type="file" accept=".csv" hidden />
+        </label>
+        <button id="btn-tg-config" class="btn btn-ghost" type="button">⚙️ Pengaturan Telegram</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container main-content">
+    <!-- Filter / Role Scope Bar -->
+    <section class="filter-bar card">
+      <div class="filter-group">
+        <label for="filter-timeframe">Periode</label>
+        <select id="filter-timeframe">
+          <option value="ytd">YTD (Data Tersedia: Sep–Okt 2026)</option>
+          <option value="2026-09">Bulanan — September 2026</option>
+          <option value="2026-10">Bulanan — Oktober 2026</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label for="filter-region">Tampilan PIC / Region</label>
+        <select id="filter-region">
+          <option value="ALL">Nasional — Sales Manager (Semua Region)</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label for="filter-branch">Cabang (Branch)</label>
+        <select id="filter-branch">
+          <option value="ALL">Semua Cabang</option>
+        </select>
+      </div>
+      <div class="filter-meta">
+        <span class="pill pill-info" id="active-scope-pill">Memuat...</span>
+      </div>
+    </section>
+
+    <!-- KPI Cards -->
+    <section class="kpi-grid">
+      <article class="card kpi-card">
+        <span class="kpi-label">Total Net Sales</span>
+        <strong class="kpi-value" id="kpi-net-sales">-</strong>
+        <span class="kpi-sub" id="kpi-mom">-</span>
+      </article>
+      <article class="card kpi-card">
+        <span class="kpi-label">Total Volume</span>
+        <strong class="kpi-value" id="kpi-qty">-</strong>
+        <span class="kpi-sub" id="kpi-share">-</span>
+      </article>
+      <article class="card kpi-card">
+        <span class="kpi-label">Invoice Penjualan</span>
+        <strong class="kpi-value" id="kpi-invoices">-</strong>
+        <span class="kpi-sub" id="kpi-returns">-</span>
+      </article>
+      <article class="card kpi-card">
+        <span class="kpi-label">Top Performer</span>
+        <strong class="kpi-value kpi-value-sm" id="kpi-top-brand">-</strong>
+        <span class="kpi-sub" id="kpi-top-region">-</span>
+      </article>
+    </section>
+
+    <!-- Telegram Digest & Dispatch -->
+    <section class="card telegram-section">
+      <div class="section-header">
+        <div>
+          <h2>Ringkasan Telegram (<span id="tg-role-label">Sales Manager</span>)</h2>
+          <p class="section-sub">Format ringkas 1 paragraf siap baca di mobile, otomatis menyesuaikan data region &amp; cabang PIC.</p>
+        </div>
+        <div class="tg-actions">
+          <button id="btn-copy-tg" class="btn btn-secondary" type="button">Salin Pesan</button>
+          <button id="btn-send-single" class="btn btn-primary" type="button">Kirim ke PIC Terpilih</button>
+          <button id="btn-blast-all" class="btn btn-accent" type="button">Blast Semua Regional PIC (6 Region)</button>
+        </div>
+      </div>
+
+      <div class="telegram-bubble" id="tg-preview">Memuat ringkasan...</div>
+      <div id="tg-toast" class="toast hidden"></div>
+
+      <div class="dispatch-log-wrap">
+        <div class="dispatch-header">
+          <h3>Log Pengiriman Telegram</h3>
+          <span class="muted" id="tg-mode-indicator">Mode: Demo / Dry-Run (tanpa Bot Token)</span>
+        </div>
+        <div id="dispatch-logs" class="dispatch-logs">
+          <p class="muted">Belum ada pengiriman. Klik "Kirim ke PIC Terpilih" atau "Blast Semua Regional PIC" untuk menguji.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Region & Brand Charts -->
+    <section class="two-col">
+      <article class="card">
+        <div class="section-header">
+          <div>
+            <h2>Penjualan per Region</h2>
+            <p class="section-sub">6 region kanonikal (setelah normalisasi label)</p>
+          </div>
+        </div>
+        <div id="chart-region" class="bar-list"></div>
+      </article>
+
+      <article class="card">
+        <div class="section-header">
+          <div>
+            <h2>Penjualan per Brand</h2>
+            <p class="section-sub" id="brand-scope-sub">Kontribusi brand pada cakupan aktif</p>
+          </div>
+        </div>
+        <div id="chart-brand" class="bar-list"></div>
+      </article>
+    </section>
+
+    <!-- Brand x Region Matrix -->
+    <section class="card">
+      <div class="section-header">
+        <div>
+          <h2>Matriks Penjualan Brand × Region</h2>
+          <p class="section-sub">Net sales (IDR) setiap brand di masing-masing region untuk periode terpilih</p>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table id="matrix-table"></table>
+      </div>
+    </section>
+
+    <!-- 3-Tier Weakest Outlets -->
+    <section class="card">
+      <div class="section-header">
+        <div>
+          <h2>Penandaan Outlet Terlemah (3 Level)</h2>
+          <p class="section-sub">Dikelompokkan berdasarkan <code>outlet_id</code> unik agar nama outlet yang sama tidak tercampur</p>
+        </div>
+        <div class="tabs" role="tablist">
+          <button class="tab active" data-tab="national" type="button">5 Terlemah Nasional</button>
+          <button class="tab" data-tab="region" type="button">5 Terlemah per Region</button>
+          <button class="tab" data-tab="branch" type="button">Terlemah per Branch (13 Cabang)</button>
+        </div>
+      </div>
+      <div id="weakest-content" class="table-wrap"></div>
+    </section>
+  </main>
+
+  <!-- Data Quality Audit Modal -->
+  <div id="modal-audit" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3>Audit Kualitas Data &amp; Metode Pembersihan</h3>
+        <button class="btn-close" data-close="modal-audit" type="button">&times;</button>
+      </div>
+      <div id="audit-body" class="modal-body"></div>
+    </div>
+  </div>
+
+  <!-- Optional Telegram Config Modal -->
+  <div id="modal-tg-config" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3>Pengaturan Telegram (Opsional)</h3>
+        <button class="btn-close" data-close="modal-tg-config" type="button">&times;</button>
+      </div>
+      <form id="tg-config-form" class="modal-body">
+        <p class="muted">Kosongkan untuk menjalankan dalam <strong>Demo / Dry-Run Mode</strong>. Isi Bot Token &amp; Chat ID jika ingin mengirim pesan nyata via Telegram Bot API.</p>
+        <div class="form-row">
+          <label for="cfg-bot-token">Telegram Bot Token</label>
+          <input id="cfg-bot-token" type="password" placeholder="123456:ABC-DEF..." />
+        </div>
+        <div id="cfg-recipients-list" class="recipients-grid"></div>
+        <div class="modal-foot">
+          <button type="submit" class="btn btn-primary">Simpan Pengaturan</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
