@@ -10,11 +10,11 @@ from typing import Any
 
 import httpx
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app.analytics import SalesDataset, compute_dashboard, load_sales_csv
+from app.analytics import SalesDataset, compute_dashboard, export_cleaned_csv, load_sales_csv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_CSV_PATH = BASE_DIR / "data" / "dua_kelinci_sales.csv"
@@ -25,7 +25,8 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 _STATE_LOCK = threading.RLock()
 _DATASET: SalesDataset = load_sales_csv(DEFAULT_CSV_PATH.read_text(encoding="utf-8-sig"), DEFAULT_CSV_PATH.name)
-_DASHBOARD_CACHE: dict[tuple[str, str, str], dict[str, Any]] = {}
+_IS_DEFAULT_DATASET: bool = True
+_DASHBOARD_CACHE: dict[tuple[str, str, str, str], dict[str, Any]] = {}
 
 
 def _build_default_recipients(regions: tuple[str, ...]) -> dict[str, dict[str, str]]:
@@ -85,6 +86,14 @@ def _get_cached_dashboard(timeframe: str, region: str, branch: str, lang: str = 
             if branch not in valid_branches:
                 raise HTTPException(status_code=400, detail=f"Unknown branch: {branch}")
         result = compute_dashboard(_DATASET, timeframe=timeframe, region=region, branch=branch, lang=lang)
+        result["dataset_status"] = {
+            "source_name": _DATASET.audit["source_name"],
+            "is_default": _IS_DEFAULT_DATASET,
+            "raw_rows": _DATASET.audit["raw_rows"],
+            "cleaned_rows": _DATASET.audit["cleaned_rows"],
+            "date_min": _DATASET.audit["date_min"],
+            "date_max": _DATASET.audit["date_max"],
+        }
         _DASHBOARD_CACHE[key] = result
         return result
 
@@ -159,9 +168,10 @@ async def upload_csv(file: UploadFile = File(...)) -> dict[str, Any]:
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"CSV tidak valid: {exc}") from exc
 
-    global _DATASET
+    global _DATASET, _IS_DEFAULT_DATASET
     with _STATE_LOCK:
         _DATASET = new_ds
+        _IS_DEFAULT_DATASET = False
         _DASHBOARD_CACHE.clear()
         existing = _TELEGRAM_CONFIG["recipients"]
         updated_recipients = _build_default_recipients(new_ds.regions)
@@ -169,9 +179,41 @@ async def upload_csv(file: UploadFile = File(...)) -> dict[str, Any]:
             if k in existing:
                 v["pic_name"] = existing[k]["pic_name"]
                 v["chat_id"] = existing[k]["chat_id"]
+                v["lang"] = existing[k].get("lang", "auto")
         _TELEGRAM_CONFIG["recipients"] = updated_recipients
 
     return _get_cached_dashboard(timeframe="ytd", region="ALL", branch="ALL")
+
+
+@app.post("/api/reset")
+def reset_default_dataset() -> dict[str, Any]:
+    global _DATASET, _IS_DEFAULT_DATASET
+    default_ds = load_sales_csv(DEFAULT_CSV_PATH.read_text(encoding="utf-8-sig"), DEFAULT_CSV_PATH.name)
+    with _STATE_LOCK:
+        _DATASET = default_ds
+        _IS_DEFAULT_DATASET = True
+        _DASHBOARD_CACHE.clear()
+        existing = _TELEGRAM_CONFIG["recipients"]
+        updated_recipients = _build_default_recipients(default_ds.regions)
+        for k, v in updated_recipients.items():
+            if k in existing:
+                v["pic_name"] = existing[k]["pic_name"]
+                v["chat_id"] = existing[k]["chat_id"]
+                v["lang"] = existing[k].get("lang", "auto")
+        _TELEGRAM_CONFIG["recipients"] = updated_recipients
+    return _get_cached_dashboard(timeframe="ytd", region="ALL", branch="ALL")
+
+
+@app.get("/api/export/cleaned.csv")
+def download_cleaned_csv() -> PlainTextResponse:
+    with _STATE_LOCK:
+        csv_body = export_cleaned_csv(_DATASET)
+        src = _DATASET.audit["source_name"].rsplit(".", 1)[0]
+    return PlainTextResponse(
+        content=csv_body,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{src}_cleaned.csv"'},
+    )
 
 
 @app.get("/api/telegram/recipients")

@@ -75,3 +75,24 @@ def test_bilingual_english_dashboard_and_telegram() -> None:
     for d in blast.json()["dispatches"]:
         assert d["lang"] == "en"
         assert "Weakest/Branch:" in d["message"]
+
+
+def test_trajectory_reconciliation_and_export() -> None:
+    client = TestClient(app)
+    dash = client.get("/api/dashboard?timeframe=ytd&region=ALL&lang=en").json()
+
+    assert dash["reconciliation"]["tie_out_ok"] is True
+    assert dash["reconciliation"]["cleaned_net_idr"] == 1_725_966_000
+    assert dash["dataset_status"]["is_default"] is True
+
+    reg_mom = {r["region"]: r["mom_pct"] for r in dash["trajectory"]["regions"]}
+    assert reg_mom["Jawa Timur"] == 92.36
+    assert reg_mom["Jawa Barat"] == -13.88
+
+    csv_resp = client.get("/api/export/cleaned.csv")
+    assert csv_resp.status_code == 200
+    assert len(csv_resp.text.strip().splitlines()) == 1889  # header + 1888 cleaned rows
+
+    reset_resp = client.post("/api/reset")
+    assert reset_resp.status_code == 200
+    assert reset_resp.json()["dataset_status"]["is_default"] is True

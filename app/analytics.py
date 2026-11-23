@@ -20,18 +20,40 @@ REGION_ALIASES: dict[str, str] = {
     "SUMATERA": "Sumatera",
 }
 
-TIMEFRAME_LABELS: dict[str, dict[str, str]] = {
+MONTH_NAMES: dict[str, dict[str, str]] = {
     "id": {
-        "ytd": "YTD (Sep–Okt 2026)",
-        "2026-09": "September 2026",
-        "2026-10": "Oktober 2026",
+        "01": "Jan", "02": "Feb", "03": "Mar", "04": "Apr", "05": "Mei", "06": "Jun",
+        "07": "Jul", "08": "Agu", "09": "Sep", "10": "Okt", "11": "Nov", "12": "Des",
     },
     "en": {
-        "ytd": "YTD (Sep–Oct 2026)",
-        "2026-09": "September 2026",
-        "2026-10": "October 2026",
+        "01": "Jan", "02": "Feb", "03": "Mar", "04": "Apr", "05": "May", "06": "Jun",
+        "07": "Jul", "08": "Aug", "09": "Sep", "10": "Oct", "11": "Nov", "12": "Dec",
     },
 }
+
+
+def format_month_label(ym: str, lang: str = "id") -> str:
+    """Format 'YYYY-MM' into localized 'Mon YYYY'."""
+    parts = ym.split("-")
+    if len(parts) != 2:
+        return ym
+    m_name = MONTH_NAMES.get(lang, MONTH_NAMES["id"]).get(parts[1], parts[1])
+    return f"{m_name} {parts[0]}"
+
+
+def build_timeframe_labels(months: tuple[str, ...], lang: str = "id") -> dict[str, str]:
+    """Build dynamic timeframe labels from whatever months exist in the loaded CSV."""
+    labels: dict[str, str] = {}
+    for m in months:
+        labels[m] = format_month_label(m, lang)
+    if months:
+        first_m = format_month_label(months[0], lang).split(" ")[0]
+        last_m = format_month_label(months[-1], lang)
+        span = last_m if len(months) == 1 else f"{first_m}–{last_m}"
+        labels["ytd"] = f"YTD ({span})"
+    else:
+        labels["ytd"] = "YTD"
+    return labels
 
 
 def normalize_region(raw_region: str) -> tuple[str, bool]:
@@ -91,8 +113,10 @@ def load_sales_csv(csv_text: str, source_name: str = "dua_kelinci_sales.csv") ->
     duplicate_records: list[dict[str, Any]] = []
     return_records: list[dict[str, Any]] = []
 
+    raw_gross_idr = 0
     for line_no, raw in enumerate(reader, start=2):
         raw_count += 1
+        raw_gross_idr += int(raw["gross_sales_idr"])
         raw_region = raw["region"]
         canonical_region, region_changed = normalize_region(raw_region)
         if region_changed:
@@ -163,6 +187,8 @@ def load_sales_csv(csv_text: str, source_name: str = "dua_kelinci_sales.csv") ->
                     "line": line_no,
                     "invoice_no": invoice_no,
                     "sku": normalized_row["sku"],
+                    "gross_sales_idr": gross,
+                    "discount_idr": discount,
                     "net_sales_idr": net,
                 }
             )
@@ -199,8 +225,11 @@ def load_sales_csv(csv_text: str, source_name: str = "dua_kelinci_sales.csv") ->
         "source_name": source_name,
         "raw_rows": raw_count,
         "cleaned_rows": len(cleaned_rows),
+        "raw_gross_idr": raw_gross_idr,
         "duplicates_removed": len(duplicate_records),
         "duplicate_details": duplicate_records,
+        "duplicate_gross_removed_idr": sum(d["gross_sales_idr"] for d in duplicate_records),
+        "duplicate_discount_removed_idr": sum(d["discount_idr"] for d in duplicate_records),
         "duplicate_net_sales_removed_idr": sum(d["net_sales_idr"] for d in duplicate_records),
         "region_normalized_rows": region_normalized_rows,
         "region_variants": region_variants,
@@ -208,6 +237,8 @@ def load_sales_csv(csv_text: str, source_name: str = "dua_kelinci_sales.csv") ->
         "missing_salesman_rows": missing_salesman_rows,
         "return_rows": len(return_records),
         "return_details": return_records,
+        "date_min": min((r["date"] for r in cleaned_rows), default=""),
+        "date_max": max((r["date"] for r in cleaned_rows), default=""),
         "dedup_method": "Exact full-row match across all 15 normalized columns",
     }
 
@@ -299,15 +330,17 @@ def compute_dashboard(
     return_count = sum(1 for r in scoped_rows if r["is_return"])
     return_value = sum(r["net_sales_idr"] for r in scoped_rows if r["is_return"])
 
-    # MoM comparison when viewing October or YTD
+    # Dynamic MoM comparison across the latest two months in the dataset
     mom_pct: float | None = None
-    if timeframe in ("2026-10", "ytd"):
-        sep_rows = _filter_rows(dataset, timeframe="2026-09", region=region, branch=branch)
-        oct_rows = _filter_rows(dataset, timeframe="2026-10", region=region, branch=branch)
-        sep_net = sum(r["net_sales_idr"] for r in sep_rows)
-        oct_net = sum(r["net_sales_idr"] for r in oct_rows)
-        if sep_net > 0:
-            mom_pct = round(((oct_net - sep_net) / sep_net) * 100, 2)
+    prev_month = dataset.months[-2] if len(dataset.months) >= 2 else None
+    curr_month = dataset.months[-1] if len(dataset.months) >= 1 else None
+    if prev_month and curr_month and timeframe in (curr_month, "ytd"):
+        prev_rows = _filter_rows(dataset, timeframe=prev_month, region=region, branch=branch)
+        curr_rows = _filter_rows(dataset, timeframe=curr_month, region=region, branch=branch)
+        prev_net = sum(r["net_sales_idr"] for r in prev_rows)
+        curr_net = sum(r["net_sales_idr"] for r in curr_rows)
+        if prev_net > 0:
+            mom_pct = round(((curr_net - prev_net) / prev_net) * 100, 2)
 
     # Region breakdown (always across selected timeframe + optional region highlight)
     reg_totals: dict[str, dict[str, Any]] = {
@@ -433,11 +466,101 @@ def compute_dashboard(
         lang=lang,
     )
 
-    tf_labels = TIMEFRAME_LABELS[lang]
+    # Channel / Outlet Type Mix
+    type_totals: dict[str, dict[str, Any]] = {}
+    for r in scoped_rows:
+        ot = r["outlet_type"]
+        if ot not in type_totals:
+            type_totals[ot] = {"outlet_type": ot, "net_sales_idr": 0, "outlets": set()}
+        type_totals[ot]["net_sales_idr"] += r["net_sales_idr"]
+        type_totals[ot]["outlets"].add(r["outlet_id"])
+    by_outlet_type = sorted(
+        [
+            {
+                "outlet_type": v["outlet_type"],
+                "outlet_count": len(v["outlets"]),
+                "net_sales_idr": v["net_sales_idr"],
+                "share_pct": round((v["net_sales_idr"] / net_sales) * 100, 1) if net_sales else 0.0,
+            }
+            for v in type_totals.values()
+        ],
+        key=lambda x: x["net_sales_idr"],
+        reverse=True,
+    )
+
+    # Region & Branch Trajectory (prev_month -> curr_month)
+    traj_regions: list[dict[str, Any]] = []
+    traj_branches: list[dict[str, Any]] = []
+    if prev_month and curr_month:
+        reg_m: dict[str, dict[str, int]] = {reg: {"prev": 0, "curr": 0} for reg in dataset.regions}
+        br_m: dict[tuple[str, str], dict[str, int]] = {}
+        for r in dataset.rows:
+            if region != "ALL" and r["region"] != region:
+                continue
+            m = r["month"]
+            if m not in (prev_month, curr_month):
+                continue
+            slot = "prev" if m == prev_month else "curr"
+            reg_m[r["region"]][slot] += r["net_sales_idr"]
+            key_br = (r["region"], r["branch"])
+            if key_br not in br_m:
+                br_m[key_br] = {"prev": 0, "curr": 0}
+            br_m[key_br][slot] += r["net_sales_idr"]
+
+        for reg_name in sorted(reg_m):
+            if region != "ALL" and reg_name != region:
+                continue
+            p_val, c_val = reg_m[reg_name]["prev"], reg_m[reg_name]["curr"]
+            delta = c_val - p_val
+            pct = round((delta / p_val) * 100, 2) if p_val else None
+            traj_regions.append(
+                {
+                    "region": reg_name,
+                    "prev_net_idr": p_val,
+                    "curr_net_idr": c_val,
+                    "delta_idr": delta,
+                    "mom_pct": pct,
+                }
+            )
+        traj_regions.sort(key=lambda x: (x["mom_pct"] if x["mom_pct"] is not None else -999), reverse=True)
+
+        for (reg_name, br_name) in sorted(br_m):
+            p_val, c_val = br_m[(reg_name, br_name)]["prev"], br_m[(reg_name, br_name)]["curr"]
+            delta = c_val - p_val
+            pct = round((delta / p_val) * 100, 2) if p_val else None
+            traj_branches.append(
+                {
+                    "region": reg_name,
+                    "branch": br_name,
+                    "prev_net_idr": p_val,
+                    "curr_net_idr": c_val,
+                    "delta_idr": delta,
+                    "mom_pct": pct,
+                }
+            )
+        traj_branches.sort(key=lambda x: (x["mom_pct"] if x["mom_pct"] is not None else -999), reverse=True)
+
+    # Financial & Cross-Dimension Reconciliation (full cleaned dataset)
+    all_cleaned_net = sum(r["net_sales_idr"] for r in dataset.rows)
+    all_cleaned_sales_gross = sum(r["gross_sales_idr"] for r in dataset.rows if not r["is_return"])
+    all_cleaned_disc = sum(r["discount_idr"] for r in dataset.rows)
+    all_cleaned_returns = sum(r["net_sales_idr"] for r in dataset.rows if r["is_return"])
+    sum_reg_tf = sum(r["net_sales_idr"] for r in by_region)
+    sum_brand_tf = sum(r["net_sales_idr"] for r in by_brand)
+    sum_outlet_tf = sum(o["net_sales_idr"] for o in _aggregate_outlets(scoped_rows))
+    tie_out_ok = (sum_brand_tf == net_sales) and (sum_outlet_tf == net_sales) and (
+        region != "ALL" or branch != "ALL" or sum_reg_tf == net_sales
+    )
+
+    tf_labels = build_timeframe_labels(dataset.months, lang)
     return {
         "filters": {
             "timeframe": timeframe,
             "timeframe_label": tf_labels.get(timeframe, timeframe),
+            "timeframe_options": [
+                {"value": "ytd", "label": tf_labels["ytd"]},
+                *[{"value": m, "label": tf_labels[m]} for m in dataset.months],
+            ],
             "region": region,
             "branch": branch,
             "lang": lang,
@@ -454,11 +577,33 @@ def compute_dashboard(
             "return_count": return_count,
             "return_value_idr": return_value,
             "mom_pct": mom_pct,
+            "prev_month_label": format_month_label(prev_month, lang) if prev_month else None,
             "national_share_pct": round((net_sales / national_net) * 100, 1) if national_net else 0.0,
         },
         "by_region": by_region,
         "by_brand": by_brand,
+        "by_outlet_type": by_outlet_type,
         "brand_region_matrix": brand_region_matrix,
+        "trajectory": {
+            "prev_month": prev_month,
+            "curr_month": curr_month,
+            "prev_label": format_month_label(prev_month, lang) if prev_month else "-",
+            "curr_label": format_month_label(curr_month, lang) if curr_month else "-",
+            "regions": traj_regions,
+            "branches": traj_branches,
+        },
+        "reconciliation": {
+            "raw_gross_idr": dataset.audit["raw_gross_idr"],
+            "duplicate_gross_removed_idr": dataset.audit["duplicate_gross_removed_idr"],
+            "cleaned_sales_gross_idr": all_cleaned_sales_gross,
+            "cleaned_discount_idr": all_cleaned_disc,
+            "returns_idr": all_cleaned_returns,
+            "cleaned_net_idr": all_cleaned_net,
+            "tie_out_ok": tie_out_ok,
+            "scoped_net_idr": net_sales,
+            "scoped_brand_sum_idr": sum_brand_tf,
+            "scoped_outlet_sum_idr": sum_outlet_tf,
+        },
         "weakest_outlets": {
             "national_bottom_5": national_bottom_5,
             "active_region_bottom_5": (
@@ -492,7 +637,7 @@ def build_telegram_summary(
     lang: str = "id",
 ) -> dict[str, str]:
     """Generate an intuitive, mobile-friendly Telegram message tailored to scope and language."""
-    tf_label = TIMEFRAME_LABELS[lang].get(timeframe, timeframe)
+    tf_label = build_timeframe_labels(dataset.months, lang).get(timeframe, timeframe)
     mom_txt = ""
     if mom_pct is not None:
         arrow = "📈" if mom_pct >= 0 else "📉"
@@ -582,3 +727,20 @@ def build_telegram_summary(
         recipient_role = f"Regional PIC — {scope_region}"
 
     return {"scope": scope_region, "lang": "id", "recipient_role": recipient_role, "text": text}
+
+
+CSV_EXPORT_FIELDS: tuple[str, ...] = (
+    "date", "invoice_no", "region", "branch", "outlet_id", "outlet_name",
+    "outlet_type", "salesman", "brand", "sku", "qty_carton",
+    "price_per_carton_idr", "gross_sales_idr", "discount_idr", "net_sales_idr", "is_return",
+)
+
+
+def export_cleaned_csv(dataset: SalesDataset) -> str:
+    """Serialize the cleaned, deduplicated dataset back to CSV text."""
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=CSV_EXPORT_FIELDS, extrasaction="ignore")
+    writer.writeheader()
+    for row in dataset.rows:
+        writer.writerow(row)
+    return buf.getvalue()

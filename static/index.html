@@ -10,7 +10,18 @@
   <header class="topbar">
     <div class="container topbar-inner">
       <div class="brand-lockup">
-        <div class="logo-badge">DK</div>
+        <!-- Custom offline SVG Dua Kelinci emblem -->
+        <div class="logo-emblem" aria-hidden="true">
+          <svg viewBox="0 0 44 44" width="40" height="40" fill="none">
+            <rect width="44" height="44" rx="10" fill="#C81E1E"/>
+            <ellipse cx="16.5" cy="15" rx="3.4" ry="8.5" transform="rotate(-10 16.5 15)" fill="#FEF3C7"/>
+            <ellipse cx="27.5" cy="15" rx="3.4" ry="8.5" transform="rotate(10 27.5 15)" fill="#FEF3C7"/>
+            <circle cx="22" cy="27" r="9.5" fill="#FFFFFF"/>
+            <circle cx="19" cy="25.5" r="1.3" fill="#18202C"/>
+            <circle cx="25" cy="25.5" r="1.3" fill="#18202C"/>
+            <ellipse cx="22" cy="28.5" rx="2" ry="1.3" fill="#C81E1E"/>
+          </svg>
+        </div>
         <div>
           <h1>Dua Kelinci Sales Intelligence</h1>
           <p class="subtitle">Monitoring Penjualan Region, Brand, Outlet Terlemah &amp; Telegram Digest</p>
@@ -21,28 +32,32 @@
           <button id="lang-id" class="lang-btn active" type="button">ID</button>
           <button id="lang-en" class="lang-btn" type="button">EN</button>
         </div>
-        <button id="btn-audit" class="btn btn-ghost" type="button">
-          <span class="dot-warn"></span> <span data-i18n="audit_btn">Audit Data</span> (<span id="audit-badge-count">-</span>)
-        </button>
-        <label class="btn btn-ghost upload-label">
-          <span data-i18n="upload_btn">Upload CSV</span>
-          <input id="csv-upload" type="file" accept=".csv" hidden />
-        </label>
         <button id="btn-tg-config" class="btn btn-ghost" type="button" data-i18n="tg_settings_btn">⚙️ Pengaturan Telegram</button>
       </div>
     </div>
   </header>
 
   <main class="container main-content">
+    <!-- Active Dataset Notification Banner -->
+    <section class="dataset-banner card">
+      <div class="dataset-info">
+        <span class="pill pill-info" id="dataset-badge">Data Contoh</span>
+        <span id="dataset-status-text" class="dataset-text">Memuat dataset...</span>
+      </div>
+      <div class="dataset-actions">
+        <label class="btn btn-secondary upload-label">
+          <span data-i18n="upload_btn">Ganti / Upload CSV</span>
+          <input id="csv-upload" type="file" accept=".csv" hidden />
+        </label>
+        <button id="btn-reset-csv" class="btn btn-ghost hidden" type="button">Reset Data Contoh</button>
+      </div>
+    </section>
+
     <!-- Filter / Role Scope Bar -->
     <section class="filter-bar card">
       <div class="filter-group">
         <label for="filter-timeframe">Periode</label>
-        <select id="filter-timeframe">
-          <option value="ytd">YTD (Data Tersedia: Sep–Okt 2026)</option>
-          <option value="2026-09">Bulanan — September 2026</option>
-          <option value="2026-10">Bulanan — Oktober 2026</option>
-        </select>
+        <select id="filter-timeframe"></select>
       </div>
       <div class="filter-group">
         <label for="filter-region">Tampilan PIC / Region</label>
@@ -85,97 +100,140 @@
       </article>
     </section>
 
-    <!-- Telegram Digest & Dispatch -->
-    <section class="card telegram-section">
-      <div class="section-header">
-        <div>
-          <h2>Ringkasan Telegram (<span id="tg-role-label">Sales Manager</span>)</h2>
-          <p class="section-sub">Format ringkas 1 paragraf siap baca di mobile, otomatis menyesuaikan data region &amp; cabang PIC.</p>
-        </div>
-        <div class="tg-actions">
-          <button id="btn-copy-tg" class="btn btn-secondary" type="button">Salin Pesan</button>
-          <button id="btn-send-single" class="btn btn-primary" type="button">Kirim ke PIC Terpilih</button>
-          <button id="btn-blast-all" class="btn btn-accent" type="button">Blast Semua Regional PIC (6 Region)</button>
-        </div>
-      </div>
+    <!-- Primary 3-Tab Workspace Navigation -->
+    <nav class="workspace-tabs" role="tablist">
+      <button class="ws-tab active" data-ws="overview" type="button">1. Ringkasan &amp; Telegram</button>
+      <button class="ws-tab" data-ws="trajectory" type="button">2. Trajektori &amp; Outlet Terlemah</button>
+      <button class="ws-tab" data-ws="reconcile" type="button">3. Rekonsiliasi &amp; Audit Data (<span id="audit-badge-count">-</span>)</button>
+    </nav>
 
-      <div class="telegram-bubble" id="tg-preview">Memuat ringkasan...</div>
-      <div id="tg-toast" class="toast hidden"></div>
+    <!-- TAB 1: Overview & Telegram -->
+    <div id="ws-overview" class="ws-panel">
+      <section class="two-col">
+        <article class="card">
+          <div class="section-header">
+            <div>
+              <h2 id="hdr-region">Penjualan per Region</h2>
+              <p class="section-sub" id="sub-region">Klik bar region untuk memfilter wilayah</p>
+            </div>
+          </div>
+          <div id="chart-region" class="bar-list"></div>
+        </article>
 
-      <div class="dispatch-log-wrap">
-        <div class="dispatch-header">
-          <h3>Log Pengiriman Telegram</h3>
-          <span class="muted" id="tg-mode-indicator">Mode: Demo / Dry-Run (tanpa Bot Token)</span>
-        </div>
-        <div id="dispatch-logs" class="dispatch-logs">
-          <p class="muted">Belum ada pengiriman. Klik "Kirim ke PIC Terpilih" atau "Blast Semua Regional PIC" untuk menguji.</p>
-        </div>
-      </div>
-    </section>
+        <article class="card">
+          <div class="section-header">
+            <div>
+              <h2 id="hdr-brand">Penjualan per Brand</h2>
+              <p class="section-sub" id="brand-scope-sub">Kontribusi brand pada cakupan aktif</p>
+            </div>
+          </div>
+          <div id="chart-brand" class="bar-list"></div>
+          <div id="channel-mix-strip" class="channel-strip"></div>
+        </article>
+      </section>
 
-    <!-- Region & Brand Charts -->
-    <section class="two-col">
-      <article class="card">
+      <section class="card telegram-section">
         <div class="section-header">
           <div>
-            <h2>Penjualan per Region</h2>
-            <p class="section-sub">6 region kanonikal (setelah normalisasi label)</p>
+            <h2>Ringkasan Telegram (<span id="tg-role-label">Sales Manager</span>)</h2>
+            <p class="section-sub">Format ringkas 1 paragraf siap baca di mobile, otomatis menyesuaikan data region &amp; cabang PIC.</p>
+          </div>
+          <div class="tg-actions">
+            <button id="btn-copy-tg" class="btn btn-secondary" type="button">Salin Pesan</button>
+            <button id="btn-send-single" class="btn btn-primary" type="button">Kirim ke PIC Terpilih</button>
+            <button id="btn-blast-all" class="btn btn-accent" type="button">Blast Semua Regional PIC (6 Region)</button>
           </div>
         </div>
-        <div id="chart-region" class="bar-list"></div>
-      </article>
 
-      <article class="card">
-        <div class="section-header">
-          <div>
-            <h2>Penjualan per Brand</h2>
-            <p class="section-sub" id="brand-scope-sub">Kontribusi brand pada cakupan aktif</p>
+        <div class="tg-phone-frame">
+          <div class="tg-phone-head">
+            <span class="tg-bot-dot"></span>
+            <strong>Dua Kelinci Sales Bot</strong>
+            <span class="muted">Telegram Preview</span>
+          </div>
+          <div class="telegram-bubble" id="tg-preview">Memuat ringkasan...</div>
+        </div>
+        <div id="tg-toast" class="toast hidden"></div>
+
+        <div class="dispatch-log-wrap">
+          <div class="dispatch-header">
+            <h3>Log Pengiriman Telegram</h3>
+            <span class="muted" id="tg-mode-indicator">Mode: Demo / Dry-Run</span>
+          </div>
+          <div id="dispatch-logs" class="dispatch-logs">
+            <p class="muted">Belum ada pengiriman. Klik "Kirim ke PIC Terpilih" atau "Blast Semua Regional PIC" untuk menguji.</p>
           </div>
         </div>
-        <div id="chart-brand" class="bar-list"></div>
-      </article>
-    </section>
-
-    <!-- Brand x Region Matrix -->
-    <section class="card">
-      <div class="section-header">
-        <div>
-          <h2>Matriks Penjualan Brand × Region</h2>
-          <p class="section-sub">Net sales (IDR) setiap brand di masing-masing region untuk periode terpilih</p>
-        </div>
-      </div>
-      <div class="table-wrap">
-        <table id="matrix-table"></table>
-      </div>
-    </section>
-
-    <!-- 3-Tier Weakest Outlets -->
-    <section class="card">
-      <div class="section-header">
-        <div>
-          <h2>Penandaan Outlet Terlemah (3 Level)</h2>
-          <p class="section-sub">Dikelompokkan berdasarkan <code>outlet_id</code> unik agar nama outlet yang sama tidak tercampur</p>
-        </div>
-        <div class="tabs" role="tablist">
-          <button class="tab active" data-tab="national" type="button">5 Terlemah Nasional</button>
-          <button class="tab" data-tab="region" type="button">5 Terlemah per Region</button>
-          <button class="tab" data-tab="branch" type="button">Terlemah per Branch (13 Cabang)</button>
-        </div>
-      </div>
-      <div id="weakest-content" class="table-wrap"></div>
-    </section>
-  </main>
-
-  <!-- Data Quality Audit Modal -->
-  <div id="modal-audit" class="modal hidden" role="dialog" aria-modal="true">
-    <div class="modal-card">
-      <div class="modal-head">
-        <h3>Audit Kualitas Data &amp; Metode Pembersihan</h3>
-        <button class="btn-close" data-close="modal-audit" type="button">&times;</button>
-      </div>
-      <div id="audit-body" class="modal-body"></div>
+      </section>
     </div>
-  </div>
+
+    <!-- TAB 2: Trajectory & Weakest Outlets -->
+    <div id="ws-trajectory" class="ws-panel hidden">
+      <section class="card">
+        <div class="section-header">
+          <div>
+            <h2 id="hdr-traj">Trajektori Pertumbuhan Region &amp; Cabang (MoM)</h2>
+            <p class="section-sub" id="sub-traj">Membandingkan bulan terakhir terhadap bulan sebelumnya untuk mendeteksi penurunan tersembunyi</p>
+          </div>
+        </div>
+        <div class="two-col">
+          <div class="table-wrap" id="traj-region-wrap"></div>
+          <div class="table-wrap" id="traj-branch-wrap"></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="section-header">
+          <div>
+            <h2 id="hdr-weak">Penandaan Outlet Terlemah (3 Level)</h2>
+            <p class="section-sub" id="sub-weak">Dikelompokkan berdasarkan <code>outlet_id</code> unik agar nama outlet yang sama tidak tercampur</p>
+          </div>
+          <div class="tabs" role="tablist">
+            <button class="tab active" data-tab="national" type="button">5 Terlemah Nasional</button>
+            <button class="tab" data-tab="region" type="button">5 Terlemah per Region</button>
+            <button class="tab" data-tab="branch" type="button">Terlemah per Branch (13 Cabang)</button>
+          </div>
+        </div>
+        <div id="weakest-content" class="table-wrap"></div>
+      </section>
+
+      <section class="card">
+        <div class="section-header">
+          <div>
+            <h2 id="hdr-matrix">Matriks Penjualan Brand × Region</h2>
+            <p class="section-sub" id="sub-matrix">Net sales (IDR) setiap brand di masing-masing region untuk periode terpilih</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="matrix-table"></table>
+        </div>
+      </section>
+    </div>
+
+    <!-- TAB 3: Reconciliation & Data Audit -->
+    <div id="ws-reconcile" class="ws-panel hidden">
+      <section class="card">
+        <div class="section-header">
+          <div>
+            <h2 id="hdr-recon">Rekonsiliasi Keuangan &amp; Cross-Check Dimensi</h2>
+            <p class="section-sub" id="sub-recon">Memastikan angka mentah, pembersihan duplikat, retur, dan agregasi region/brand/outlet 100% cocok</p>
+          </div>
+          <a href="/api/export/cleaned.csv" class="btn btn-secondary" id="btn-download-clean">Download CSV Bersih</a>
+        </div>
+        <div id="recon-grid" class="two-col"></div>
+      </section>
+
+      <section class="card">
+        <div class="section-header">
+          <div>
+            <h2 id="hdr-audit">Log Pembersihan &amp; Kualitas Data</h2>
+            <p class="section-sub" id="sub-audit">Setiap baris yang dinormalisasi, dideduplikasi, atau ditandai tercatat transparan</p>
+          </div>
+        </div>
+        <div id="audit-body" class="audit-body"></div>
+      </section>
+    </div>
+  </main>
 
   <!-- Optional Telegram Config Modal -->
   <div id="modal-tg-config" class="modal hidden" role="dialog" aria-modal="true">
