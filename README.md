@@ -3,12 +3,12 @@
 Aplikasi web ringan untuk menganalisis data penjualan Dua Kelinci (September–Oktober 2026) tanpa memerlukan database lokal. Data dimuat ke memori saat startup dengan pembersihan otomatis, pre-aggregasi cepat, dan ringkasan Telegram yang dipersonalisasi per Sales Manager maupun per Regional PIC.
 
 ## Fitur Utama
-- **Penjualan per Region, Brand, & Matriks Brand × Region:** Mendukung filter periode (**YTD Sep–Okt 2026**, **September 2026**, **Oktober 2026**) serta filter per **Region** dan **Cabang (Branch)**.
-- **Penandaan Outlet Terlemah (3 Level):**
-  1. **5 Outlet Terlemah Nasional**
-  2. **5 Outlet Terlemah per Region**
-  3. **Outlet Terlemah per Branch (13 Cabang)**
-- **Bilingual (ID / EN):** Pengalih bahasa instan **`ID | EN`** di antarmuka web maupun format ringkasan Telegram (termasuk preferensi bahasa opsional per Regional PIC di Pengaturan Telegram).
+- **3-Tab Workspace Ringkas & Intuitif:**
+  1. **Ringkasan & Telegram:** Penjualan per Region (bar interaktif — klik untuk filter wilayah), Penjualan per Brand, komposisi Channel (`Grosir`, `Toko Kelontong`, `Warung`, `Minimarket`), dan pratinjau pesan Telegram.
+  2. **Trajektori & Outlet Terlemah:** Trajektori pertumbuhan MoM per Region & Cabang, Matriks Brand × Region, serta penandaan outlet terlemah 3 level (**5 Terlemah Nasional**, **5 Terlemah per Region**, **Terlemah per Branch**).
+  3. **Rekonsiliasi & Audit Data:** Jembatan rekonsiliasi keuangan (`Raw Gross → Duplikat → Diskon → Retur → Cleaned Net`), *cross-check* antar dimensi (`Δ = Rp 0`), unduh CSV bersih (`/api/export/cleaned.csv`), dan log audit per baris.
+- **Dataset Aktif & Upload CSV Kustom:** Menampilkan status dataset yang sedang dimuat, mendukung upload CSV lain secara dinamis (termasuk deteksi bulan otomatis), serta tombol **Reset Data Contoh**.
+- **Bilingual (`ID | EN`):** Pengalih bahasa instan di antarmuka web dan pesan Telegram (termasuk preferensi bahasa opsional per Regional PIC di Pengaturan Telegram).
 - **Ringkasan & Pengiriman Telegram Terpersonalisasi:**
   - Pesan 1 paragraf ringkas yang menyesuaikan cakupan pembaca (**Sales Manager Nasional** atau **Regional PIC** masing-masing wilayah).
   - Tombol **Salin Pesan**, **Kirim ke PIC Terpilih**, dan **Blast Semua Regional PIC (6 Region)** (masing-masing menerima metrik wilayah dan cabangnya sendiri).
