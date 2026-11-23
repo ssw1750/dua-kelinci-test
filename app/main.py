@@ -35,6 +35,7 @@ def _build_default_recipients(regions: tuple[str, ...]) -> dict[str, dict[str, s
             "role": "Sales Manager (Nasional)",
             "pic_name": "Budi Santoso (Sales Manager)",
             "chat_id": os.getenv("TELEGRAM_CHAT_ID_ALL", ""),
+            "lang": "auto",
         }
     }
     default_names = {
@@ -52,6 +53,7 @@ def _build_default_recipients(regions: tuple[str, ...]) -> dict[str, dict[str, s
             "role": f"Regional PIC — {reg}",
             "pic_name": f"{default_names.get(reg, 'PIC ' + reg)} ({reg})",
             "chat_id": os.getenv(env_key, ""),
+            "lang": "auto",
         }
     return recipients
 
@@ -63,8 +65,9 @@ _TELEGRAM_CONFIG: dict[str, Any] = {
 _DISPATCH_LOGS: list[dict[str, Any]] = []
 
 
-def _get_cached_dashboard(timeframe: str, region: str, branch: str) -> dict[str, Any]:
-    key = (timeframe, region, branch)
+def _get_cached_dashboard(timeframe: str, region: str, branch: str, lang: str = "id") -> dict[str, Any]:
+    lang = "en" if lang == "en" else "id"
+    key = (timeframe, region, branch, lang)
     with _STATE_LOCK:
         cached = _DASHBOARD_CACHE.get(key)
         if cached is not None:
@@ -81,7 +84,7 @@ def _get_cached_dashboard(timeframe: str, region: str, branch: str) -> dict[str,
             )
             if branch not in valid_branches:
                 raise HTTPException(status_code=400, detail=f"Unknown branch: {branch}")
-        result = compute_dashboard(_DATASET, timeframe=timeframe, region=region, branch=branch)
+        result = compute_dashboard(_DATASET, timeframe=timeframe, region=region, branch=branch, lang=lang)
         _DASHBOARD_CACHE[key] = result
         return result
 
@@ -89,6 +92,7 @@ def _get_cached_dashboard(timeframe: str, region: str, branch: str) -> dict[str,
 class RecipientUpdate(BaseModel):
     pic_name: str = Field(..., min_length=1, max_length=100)
     chat_id: str = Field(default="", max_length=64)
+    lang: str = Field(default="auto")  # "auto" | "id" | "en"
 
 
 class TelegramConfigPayload(BaseModel):
@@ -100,6 +104,7 @@ class TelegramSendPayload(BaseModel):
     timeframe: str = Field(default="ytd")
     scope: str = Field(default="ALL")
     mode: str = Field(default="single")  # "single" or "blast_all_regions"
+    lang: str = Field(default="id")  # "id" or "en"
 
 
 async def _deliver_telegram(bot_token: str, chat_id: str, text: str) -> tuple[str, str]:
@@ -140,8 +145,9 @@ def get_dashboard(
     timeframe: str = Query(default="ytd"),
     region: str = Query(default="ALL"),
     branch: str = Query(default="ALL"),
+    lang: str = Query(default="id"),
 ) -> dict[str, Any]:
-    return _get_cached_dashboard(timeframe=timeframe, region=region, branch=branch)
+    return _get_cached_dashboard(timeframe=timeframe, region=region, branch=branch, lang=lang)
 
 
 @app.post("/api/upload")
@@ -188,6 +194,9 @@ def update_telegram_recipients(payload: TelegramConfigPayload) -> dict[str, Any]
             if scope_key in _TELEGRAM_CONFIG["recipients"]:
                 _TELEGRAM_CONFIG["recipients"][scope_key]["pic_name"] = rec.pic_name.strip()
                 _TELEGRAM_CONFIG["recipients"][scope_key]["chat_id"] = rec.chat_id.strip()
+                _TELEGRAM_CONFIG["recipients"][scope_key]["lang"] = (
+                    rec.lang if rec.lang in ("auto", "id", "en") else "auto"
+                )
     return get_telegram_recipients()
 
 
@@ -209,14 +218,17 @@ async def send_telegram(payload: TelegramSendPayload) -> dict[str, Any]:
 
     dispatched: list[dict[str, Any]] = []
     for scope_key in target_scopes:
-        # Each recipient ALWAYS receives the dashboard summary tailored to their own scope
-        scoped_dash = _get_cached_dashboard(timeframe=payload.timeframe, region=scope_key, branch="ALL")
-        msg_text = scoped_dash["telegram_summary"]["text"]
         rec = recipients_snapshot[scope_key]
+        eff_lang = payload.lang if rec.get("lang", "auto") == "auto" else rec["lang"]
+        scoped_dash = _get_cached_dashboard(
+            timeframe=payload.timeframe, region=scope_key, branch="ALL", lang=eff_lang
+        )
+        msg_text = scoped_dash["telegram_summary"]["text"]
         status, detail = await _deliver_telegram(bot_token, rec["chat_id"], msg_text)
         entry = {
             "timestamp": datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M:%S"),
             "scope": scope_key,
+            "lang": eff_lang,
             "role": rec["role"],
             "pic_name": rec["pic_name"],
             "chat_id": rec["chat_id"] or "(demo-dry-run)",

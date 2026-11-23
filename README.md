@@ -8,6 +8,7 @@ Aplikasi web ringan untuk menganalisis data penjualan Dua Kelinci (September–O
   1. **5 Outlet Terlemah Nasional**
   2. **5 Outlet Terlemah per Region**
   3. **Outlet Terlemah per Branch (13 Cabang)**
+- **Bilingual (ID / EN):** Pengalih bahasa instan **`ID | EN`** di antarmuka web maupun format ringkasan Telegram (termasuk preferensi bahasa opsional per Regional PIC di Pengaturan Telegram).
 - **Ringkasan & Pengiriman Telegram Terpersonalisasi:**
   - Pesan 1 paragraf ringkas yang menyesuaikan cakupan pembaca (**Sales Manager Nasional** atau **Regional PIC** masing-masing wilayah).
   - Tombol **Salin Pesan**, **Kirim ke PIC Terpilih**, dan **Blast Semua Regional PIC (6 Region)** (masing-masing menerima metrik wilayah dan cabangnya sendiri).

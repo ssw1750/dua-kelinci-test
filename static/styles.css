@@ -52,7 +52,28 @@ body {
 }
 .topbar h1 { margin: 0; font-size: 1.15rem; }
 .subtitle { margin: 2px 0 0; font-size: 0.82rem; color: var(--muted); }
-.topbar-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.topbar-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+.lang-switch {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #f8fafc;
+}
+.lang-btn {
+  border: none;
+  background: transparent;
+  padding: 7px 11px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  color: var(--muted);
+}
+.lang-btn.active {
+  background: var(--text);
+  color: #fff;
+}
 
 .main-content { padding: 20px 20px 48px; display: flex; flex-direction: column; gap: 18px; }
 .card {
@@ -221,7 +242,7 @@ tr:hover td { background: #fafbfd; }
 .modal-body { padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; font-size: 0.86rem; }
 .form-row { display: flex; flex-direction: column; gap: 4px; }
 .recipients-grid { display: flex; flex-direction: column; gap: 8px; }
-.rec-row { display: grid; grid-template-columns: 150px 1fr 1fr; gap: 8px; align-items: center; }
+.rec-row { display: grid; grid-template-columns: 150px 1fr 1fr 90px; gap: 8px; align-items: center; }
 .modal-foot { display: flex; justify-content: flex-end; margin-top: 8px; }
 
 @media (max-width: 900px) {

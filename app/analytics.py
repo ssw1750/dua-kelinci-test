@@ -20,10 +20,17 @@ REGION_ALIASES: dict[str, str] = {
     "SUMATERA": "Sumatera",
 }
 
-TIMEFRAME_LABELS: dict[str, str] = {
-    "ytd": "YTD (Sep–Okt 2026)",
-    "2026-09": "September 2026",
-    "2026-10": "Oktober 2026",
+TIMEFRAME_LABELS: dict[str, dict[str, str]] = {
+    "id": {
+        "ytd": "YTD (Sep–Okt 2026)",
+        "2026-09": "September 2026",
+        "2026-10": "Oktober 2026",
+    },
+    "en": {
+        "ytd": "YTD (Sep–Oct 2026)",
+        "2026-09": "September 2026",
+        "2026-10": "October 2026",
+    },
 }
 
 
@@ -34,10 +41,18 @@ def normalize_region(raw_region: str) -> tuple[str, bool]:
     return canonical, canonical != raw_region
 
 
-def format_idr_compact(amount: int | float) -> str:
-    """Format IDR amounts into concise Indonesian shorthand for Telegram/cards."""
+def format_idr_compact(amount: int | float, lang: str = "id") -> str:
+    """Format IDR amounts into concise shorthand for Telegram/cards."""
     sign = "-" if amount < 0 else ""
     val = abs(amount)
+    if lang == "en":
+        if val >= 1_000_000_000:
+            return f"{sign}Rp {val / 1_000_000_000:.2f}B"
+        if val >= 1_000_000:
+            return f"{sign}Rp {val / 1_000_000:.1f}M"
+        if val >= 1_000:
+            return f"{sign}Rp {round(val / 1_000):,}K"
+        return f"{sign}Rp {int(val):,}"
     if val >= 1_000_000_000:
         return f"{sign}Rp {val / 1_000_000_000:.2f} M".replace(".", ",")
     if val >= 1_000_000:
@@ -269,8 +284,10 @@ def compute_dashboard(
     timeframe: str = "ytd",
     region: str = "ALL",
     branch: str = "ALL",
+    lang: str = "id",
 ) -> dict[str, Any]:
     """Compute scoped dashboard metrics, matrices, 3-tier weakest outlets, and Telegram summary."""
+    lang = "en" if lang == "en" else "id"
     scoped_rows = _filter_rows(dataset, timeframe=timeframe, region=region, branch=branch)
     tf_all_rows = _filter_rows(dataset, timeframe=timeframe, region="ALL", branch="ALL")
 
@@ -413,14 +430,17 @@ def compute_dashboard(
         return_count=return_count,
         return_value=return_value,
         mom_pct=mom_pct,
+        lang=lang,
     )
 
+    tf_labels = TIMEFRAME_LABELS[lang]
     return {
         "filters": {
             "timeframe": timeframe,
-            "timeframe_label": TIMEFRAME_LABELS.get(timeframe, timeframe),
+            "timeframe_label": tf_labels.get(timeframe, timeframe),
             "region": region,
             "branch": branch,
+            "lang": lang,
             "available_regions": list(dataset.regions),
             "branches_by_region": {k: list(v) for k, v in dataset.branches_by_region.items()},
             "available_months": list(dataset.months),
@@ -469,30 +489,74 @@ def build_telegram_summary(
     return_count: int,
     return_value: int,
     mom_pct: float | None,
+    lang: str = "id",
 ) -> dict[str, str]:
-    """Generate an intuitive, mobile-friendly Telegram message tailored to the recipient scope."""
-    tf_label = TIMEFRAME_LABELS.get(timeframe, timeframe)
+    """Generate an intuitive, mobile-friendly Telegram message tailored to scope and language."""
+    tf_label = TIMEFRAME_LABELS[lang].get(timeframe, timeframe)
     mom_txt = ""
     if mom_pct is not None:
         arrow = "📈" if mom_pct >= 0 else "📉"
         sign = "+" if mom_pct >= 0 else ""
         mom_txt = f" · {arrow} *{sign}{mom_pct:.2f}%* MoM"
 
-    ret_txt = f" (termasuk {return_count} retur {format_idr_compact(abs(return_value))})" if return_count else ""
     top_brand = by_brand[0] if by_brand else {"brand": "-", "net_sales_idr": 0, "share_pct": 0}
 
+    if lang == "en":
+        ret_txt = (
+            f" (incl. {return_count} return {format_idr_compact(abs(return_value), 'en')})"
+            if return_count
+            else ""
+        )
+        if scope_region == "ALL":
+            top_reg = by_region[0]
+            low_reg = by_region[-1]
+            weak_list = ", ".join(
+                f"*{o['outlet_id']}* {o['outlet_name']} ({o['branch']}, {format_idr_compact(o['net_sales_idr'], 'en')})"
+                for o in national_bottom_5
+            )
+            text = (
+                f"📊 *Dua Kelinci Sales Digest — National ({tf_label})*\n"
+                f"💰 Net Sales: *{format_idr_compact(scoped_net, 'en')}* ({scoped_qty:,} cartons · {scoped_invoices:,} invoices{ret_txt}{mom_txt})\n"
+                f"🏆 Top Region: *{top_reg['region']}* ({format_idr_compact(top_reg['net_sales_idr'], 'en')}) | "
+                f"Lowest: *{low_reg['region']}* ({format_idr_compact(low_reg['net_sales_idr'], 'en')}) | "
+                f"Top Brand: *{top_brand['brand']}* ({top_brand['share_pct']}%)\n"
+                f"⚠️ Bottom 5 Outlets (National): {weak_list}."
+            )
+            recipient_role = "Sales Manager (National)"
+        else:
+            share_pct = round((scoped_net / national_net) * 100, 1) if national_net else 0.0
+            reg_weak_5 = bottom_5_per_region.get(scope_region, [])
+            weak_list = ", ".join(
+                f"*{o['outlet_id']}* {o['outlet_name']} ({o['branch']}, {format_idr_compact(o['net_sales_idr'], 'en')})"
+                for o in reg_weak_5
+            )
+            branch_low = ", ".join(
+                f"{b['branch']}: *{b['outlet_id']}* ({format_idr_compact(b['net_sales_idr'], 'en')})"
+                for b in lowest_per_branch
+            )
+            text = (
+                f"📊 *Region {scope_region} Sales Digest — ({tf_label})*\n"
+                f"💰 Net Sales: *{format_idr_compact(scoped_net, 'en')}* ({share_pct}% of national · {scoped_qty:,} cartons · {scoped_invoices:,} invoices{ret_txt}{mom_txt})\n"
+                f"🏆 Top Brand in Region: *{top_brand['brand']}* ({format_idr_compact(top_brand['net_sales_idr'], 'en')} / {top_brand['share_pct']}%) | "
+                f"Weakest/Branch: {branch_low}\n"
+                f"⚠️ Bottom 5 Outlets in {scope_region}: {weak_list}."
+            )
+            recipient_role = f"Regional PIC — {scope_region}"
+        return {"scope": scope_region, "lang": "en", "recipient_role": recipient_role, "text": text}
+
+    ret_txt = f" (termasuk {return_count} retur {format_idr_compact(abs(return_value), 'id')})" if return_count else ""
     if scope_region == "ALL":
         top_reg = by_region[0]
         low_reg = by_region[-1]
         weak_list = ", ".join(
-            f"*{o['outlet_id']}* {o['outlet_name']} ({o['branch']}, {format_idr_compact(o['net_sales_idr'])})"
+            f"*{o['outlet_id']}* {o['outlet_name']} ({o['branch']}, {format_idr_compact(o['net_sales_idr'], 'id')})"
             for o in national_bottom_5
         )
         text = (
             f"📊 *Rekap Penjualan Dua Kelinci — Nasional ({tf_label})*\n"
-            f"💰 Net Sales: *{format_idr_compact(scoped_net)}* ({scoped_qty:,} karton · {scoped_invoices:,} invoice{ret_txt}{mom_txt})\n"
-            f"🏆 Top Region: *{top_reg['region']}* ({format_idr_compact(top_reg['net_sales_idr'])}) | "
-            f"Terendah: *{low_reg['region']}* ({format_idr_compact(low_reg['net_sales_idr'])}) | "
+            f"💰 Net Sales: *{format_idr_compact(scoped_net, 'id')}* ({scoped_qty:,} karton · {scoped_invoices:,} invoice{ret_txt}{mom_txt})\n"
+            f"🏆 Top Region: *{top_reg['region']}* ({format_idr_compact(top_reg['net_sales_idr'], 'id')}) | "
+            f"Terendah: *{low_reg['region']}* ({format_idr_compact(low_reg['net_sales_idr'], 'id')}) | "
             f"Top Brand: *{top_brand['brand']}* ({top_brand['share_pct']}%)\n"
             f"⚠️ 5 Outlet Terlemah Nasional: {weak_list}."
         )
@@ -501,24 +565,20 @@ def build_telegram_summary(
         share_pct = round((scoped_net / national_net) * 100, 1) if national_net else 0.0
         reg_weak_5 = bottom_5_per_region.get(scope_region, [])
         weak_list = ", ".join(
-            f"*{o['outlet_id']}* {o['outlet_name']} ({o['branch']}, {format_idr_compact(o['net_sales_idr'])})"
+            f"*{o['outlet_id']}* {o['outlet_name']} ({o['branch']}, {format_idr_compact(o['net_sales_idr'], 'id')})"
             for o in reg_weak_5
         )
         branch_low = ", ".join(
-            f"{b['branch']}: *{b['outlet_id']}* ({format_idr_compact(b['net_sales_idr'])})"
+            f"{b['branch']}: *{b['outlet_id']}* ({format_idr_compact(b['net_sales_idr'], 'id')})"
             for b in lowest_per_branch
         )
         text = (
             f"📊 *Rekap Wilayah {scope_region} — ({tf_label})*\n"
-            f"💰 Net Sales: *{format_idr_compact(scoped_net)}* ({share_pct}% nasional · {scoped_qty:,} karton · {scoped_invoices:,} invoice{ret_txt}{mom_txt})\n"
-            f"🏆 Top Brand Wilayah: *{top_brand['brand']}* ({format_idr_compact(top_brand['net_sales_idr'])} / {top_brand['share_pct']}%) | "
+            f"💰 Net Sales: *{format_idr_compact(scoped_net, 'id')}* ({share_pct}% nasional · {scoped_qty:,} karton · {scoped_invoices:,} invoice{ret_txt}{mom_txt})\n"
+            f"🏆 Top Brand Wilayah: *{top_brand['brand']}* ({format_idr_compact(top_brand['net_sales_idr'], 'id')} / {top_brand['share_pct']}%) | "
             f"Outlet Terlemah/Cabang: {branch_low}\n"
             f"⚠️ 5 Outlet Terlemah {scope_region}: {weak_list}."
         )
         recipient_role = f"Regional PIC — {scope_region}"
 
-    return {
-        "scope": scope_region,
-        "recipient_role": recipient_role,
-        "text": text,
-    }
+    return {"scope": scope_region, "lang": "id", "recipient_role": recipient_role, "text": text}

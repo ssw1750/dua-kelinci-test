@@ -17,14 +17,18 @@
         </div>
       </div>
       <div class="topbar-actions">
+        <div class="lang-switch" role="group" aria-label="Language switch">
+          <button id="lang-id" class="lang-btn active" type="button">ID</button>
+          <button id="lang-en" class="lang-btn" type="button">EN</button>
+        </div>
         <button id="btn-audit" class="btn btn-ghost" type="button">
-          <span class="dot-warn"></span> Audit Data (<span id="audit-badge-count">-</span>)
+          <span class="dot-warn"></span> <span data-i18n="audit_btn">Audit Data</span> (<span id="audit-badge-count">-</span>)
         </button>
         <label class="btn btn-ghost upload-label">
-          Upload CSV
+          <span data-i18n="upload_btn">Upload CSV</span>
           <input id="csv-upload" type="file" accept=".csv" hidden />
         </label>
-        <button id="btn-tg-config" class="btn btn-ghost" type="button">⚙️ Pengaturan Telegram</button>
+        <button id="btn-tg-config" class="btn btn-ghost" type="button" data-i18n="tg_settings_btn">⚙️ Pengaturan Telegram</button>
       </div>
     </div>
   </header>

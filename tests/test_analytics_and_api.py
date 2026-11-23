@@ -47,7 +47,7 @@ def test_telegram_blast_sends_distinct_region_messages() -> None:
     client = TestClient(app)
     resp = client.post(
         "/api/telegram/send",
-        json={"timeframe": "ytd", "scope": "ALL", "mode": "blast_all_regions"},
+        json={"timeframe": "ytd", "scope": "ALL", "mode": "blast_all_regions", "lang": "id"},
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -57,3 +57,21 @@ def test_telegram_blast_sends_distinct_region_messages() -> None:
     for reg, msg in messages_by_region.items():
         assert reg in msg
         assert "Outlet Terlemah/Cabang:" in msg
+
+
+def test_bilingual_english_dashboard_and_telegram() -> None:
+    client = TestClient(app)
+    resp = client.get("/api/dashboard?timeframe=ytd&region=ALL&lang=en")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["filters"]["lang"] == "en"
+    assert "Dua Kelinci Sales Digest — National" in data["telegram_summary"]["text"]
+
+    blast = client.post(
+        "/api/telegram/send",
+        json={"timeframe": "ytd", "scope": "ALL", "mode": "blast_all_regions", "lang": "en"},
+    )
+    assert blast.status_code == 200
+    for d in blast.json()["dispatches"]:
+        assert d["lang"] == "en"
+        assert "Weakest/Branch:" in d["message"]
